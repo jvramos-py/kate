@@ -1,0 +1,38 @@
+version: '3.8'
+
+services:
+  lavalink:
+    image: ghcr.io/lavalink-devs/lavalink:4-alpine
+    container_name: kate-lavalink
+    restart: unless-stopped
+    ports:
+      - "2333:2333"
+    expose:
+      - 2333
+    environment:
+      - _JAVA_OPTIONS=-Xmx2G
+      - LAVALINK_SERVER_PASSWORD=youshallnotpass
+      - LAVALINK_SERVER_BINDADDRESS=0.0.0.0
+    volumes:
+      - ./application.yml:/opt/Lavalink/application.yml
+      - ./sounds:/opt/Lavalink/sounds
+    networks:
+      - kate-network
+  whisper:
+    image: fedirz/faster-whisper-server:latest-cuda
+    container_name: kate-whisper
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./whisper_models:/root/.cache/huggingface
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [ gpu ]
+    restart: unless-stopped
+networks:
+  kate-network:
+    driver: bridge

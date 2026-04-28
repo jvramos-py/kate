@@ -16,8 +16,6 @@ import discord4j.gateway.json.GatewayPayload
 import kotlinx.coroutines.reactor.awaitSingle
 import kotlinx.coroutines.reactor.mono
 import kotlinx.coroutines.runBlocking
-import kotlinx.serialization.json.buildJsonObject
-import kotlinx.serialization.json.put
 import java.net.URI
 
 fun main(): Unit = runBlocking {
@@ -51,6 +49,8 @@ fun main(): Unit = runBlocking {
             .setPassword("youshallnotpass")
             .build()
     )
+
+    val speakerService = Speaker("/home/jose/IdeaProjects/kate/src/main/resources/voices/it_IT-paola-medium.onnx", "/home/jose/IdeaProjects/kate/lavalink/sounds")
     val discordClient = gateway.restClient
     val applicationId = discordClient.applicationId.block()!!
     println("✅ Bot conectado como ${gateway.self.awaitSingle().username}")
@@ -78,7 +78,7 @@ fun main(): Unit = runBlocking {
     }
     gateway.on(MessageCreateEvent::class.java).subscribe { event ->
         mono {
-            handleMessage(event, ollamaClient, chromaClient, collectionId)
+            handleMessage(event, ollamaClient,speakerService)
         }.doOnError { e ->
             println("[DEBUG] ERRO ao processar mensagem: ${e.message}")
             e.printStackTrace()
@@ -135,8 +135,9 @@ fun main(): Unit = runBlocking {
     suspend fun handleMessage(
         event: MessageCreateEvent,
         ollamaClient: OllamaClient,
-        chromaClient: ChromaClient,
-        collectionId: String?
+//        chromaClient: ChromaClient,
+        speaker: Speaker,
+//        collectionId: String?
     ) {
         val content = event.message.content
         val channel = event.message.channel.awaitSingle()
@@ -147,73 +148,73 @@ fun main(): Unit = runBlocking {
 
         val isKateCalled = content.contains("Kate", ignoreCase = true)
 
-        var context: String? = null
-        if (collectionId != null && isKateCalled) {
-            println("[DEBUG] Kate foi chamada. Buscando contexto no ChromaDB...")
-            val queryEmbed = ollamaClient.getEmbeddings(content)
-            if (queryEmbed != null) {
-                val results = chromaClient.query(collectionId, queryEmbed)
-                if (results.isNotEmpty()) {
-                    context = results.joinToString("\n")
-                    println("[DEBUG] Contexto recuperado: ${context.take(50)}...")
-                } else {
-                    println("[DEBUG] Nenhum contexto similar encontrado.")
-                }
-            } else {
-                println("[DEBUG] Falha ao gerar embeddings para a query.")
-            }
-        }
+//        var context: String? = null
+//        if (collectionId != null && isKateCalled) {
+//            println("[DEBUG] Kate foi chamada. Buscando contexto no ChromaDB...")
+//            val queryEmbed = ollamaClient.getEmbeddings(content)
+//            if (queryEmbed != null) {
+//                val results = chromaClient.query(collectionId, queryEmbed)
+//                if (results.isNotEmpty()) {
+//                    context = results.joinToString("\n")
+//                    println("[DEBUG] Contexto recuperado: ${context.take(50)}...")
+//                } else {
+//                    println("[DEBUG] Nenhum contexto similar encontrado.")
+//                }
+//            } else {
+//                println("[DEBUG] Falha ao gerar embeddings para a query.")
+//            }
+//        }
 
         val response = if (isKateCalled) {
-            ollamaClient.generateResponse(content, context)
+            ollamaClient.generateResponse(content)
         } else null
-
         if (response != null) {
-            println("[DEBUG] Respondendo $content com $response")
             channel.createMessage(response).awaitSingle()
+            val file = speaker.generateSpeech(response, "${author.username}_${System.currentTimeMillis()}.wav")
+            println("[DEBUG] Respondendo $content com $response")
         }
 
-        if (collectionId != null) {
-            val doc = if (response != null) {
-                "Usuário ${author.username}: $content\nKate: $response"
-            } else {
-                "Usuário ${author.username}: $content"
-            }
-
-            println("[DEBUG] Gerando embeddings para salvar documento: ${doc.take(50)}...")
-            val docEmbed = ollamaClient.getEmbeddings(doc)
-            if (docEmbed != null) {
-                val metadata = buildJsonObject {
-                    put("userId", author.id.asLong().toString())
-                    put("timestamp", System.currentTimeMillis())
-                }
-                
-                // Gerencia limite de 8 mensagens por usuário
-                val userFilter = buildJsonObject {
-                    put("userId", author.id.asLong().toString())
-                }
-                
-                val existingDocs = chromaClient.getDocuments(collectionId, where = userFilter)
-                if (existingDocs != null && existingDocs.ids.size >= 8) {
-                    val sortedIds = existingDocs.ids.sorted()
-                    val idsToDelete = sortedIds.take(existingDocs.ids.size - 7)
-                    println("[DEBUG] Removendo ${idsToDelete.size} mensagens antigas do usuário ${author.username}")
-                    chromaClient.deleteDocuments(collectionId, ids = idsToDelete)
-                }
-
-                println("[DEBUG] Salvando documento no ChromaDB...")
-                chromaClient.addDocument(
-                    collectionId = collectionId,
-                    id = System.currentTimeMillis().toString(),
-                    embedding = docEmbed,
-                    document = doc,
-                    metadata = metadata
-                )
-                println("[DEBUG] Documento salvo com sucesso.")
-            } else {
-                println("[DEBUG] ERRO: Falha ao gerar embeddings para o documento. Não foi possível salvar.")
-            }
-        } else {
-            println("[DEBUG] ERRO: collectionId é nulo. Não foi possível salvar.")
-        }
+//        if (collectionId != null) {
+//            val doc = if (response != null) {
+//                "Usuário ${author.username}: $content\nKate: $response"
+//            } else {
+//                "Usuário ${author.username}: $content"
+//            }
+//
+//            println("[DEBUG] Gerando embeddings para salvar documento: ${doc.take(50)}...")
+//            val docEmbed = ollamaClient.getEmbeddings(doc)
+//            if (docEmbed != null) {
+//                val metadata = buildJsonObject {
+//                    put("userId", author.id.asLong().toString())
+//                    put("timestamp", System.currentTimeMillis())
+//                }
+//
+//                // Gerencia limite de 8 mensagens por usuário
+//                val userFilter = buildJsonObject {
+//                    put("userId", author.id.asLong().toString())
+//                }
+//
+//                val existingDocs = chromaClient.getDocuments(collectionId, where = userFilter)
+//                if (existingDocs != null && existingDocs.ids.size >= 8) {
+//                    val sortedIds = existingDocs.ids.sorted()
+//                    val idsToDelete = sortedIds.take(existingDocs.ids.size - 7)
+//                    println("[DEBUG] Removendo ${idsToDelete.size} mensagens antigas do usuário ${author.username}")
+//                    chromaClient.deleteDocuments(collectionId, ids = idsToDelete)
+//                }
+//
+//                println("[DEBUG] Salvando documento no ChromaDB...")
+//                chromaClient.addDocument(
+//                    collectionId = collectionId,
+//                    id = System.currentTimeMillis().toString(),
+//                    embedding = docEmbed,
+//                    document = doc,
+//                    metadata = metadata
+//                )
+//                println("[DEBUG] Documento salvo com sucesso.")
+//            } else {
+//                println("[DEBUG] ERRO: Falha ao gerar embeddings para o documento. Não foi possível salvar.")
+//            }
+//        } else {
+//            println("[DEBUG] ERRO: collectionId é nulo. Não foi possível salvar.")
+//        }
     }
