@@ -1,5 +1,13 @@
 package dev.notnull
 
+import dev.notnull.models.ChromaAddRequest
+import dev.notnull.models.ChromaCollection
+import dev.notnull.models.ChromaCreateCollectionRequest
+import dev.notnull.models.ChromaDeleteRequest
+import dev.notnull.models.ChromaGetRequest
+import dev.notnull.models.ChromaGetResponse
+import dev.notnull.models.ChromaQueryRequest
+import dev.notnull.models.ChromaQueryResponse
 import io.ktor.client.*
 import io.ktor.client.call.*
 import io.ktor.client.engine.cio.*
@@ -8,59 +16,11 @@ import io.ktor.client.request.*
 import io.ktor.client.statement.*
 import io.ktor.http.*
 import io.ktor.serialization.kotlinx.json.*
-import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonObject
 
-@Serializable
-data class ChromaCollection(
-    val name: String,
-    val id: String? = null,
-    val metadata: JsonObject? = null
-)
 
-@Serializable
-data class ChromaAddRequest(
-    val ids: List<String>,
-    val embeddings: List<List<Float>>,
-    val documents: List<String>,
-    val metadatas: List<JsonObject>? = null
-)
-
-@Serializable
-data class ChromaDeleteRequest(
-    val ids: List<String>? = null,
-    val where: JsonObject? = null
-)
-
-@Serializable
-data class ChromaGetRequest(
-    val ids: List<String>? = null,
-    val where: JsonObject? = null,
-    val limit: Int? = null,
-    val sort: String? = null
-)
-
-@Serializable
-data class ChromaGetResponse(
-    val ids: List<String>,
-    val metadatas: List<JsonObject>? = null,
-    val documents: List<String>? = null
-)
-
-@Serializable
-data class ChromaQueryRequest(
-    val query_embeddings: List<List<Float>>,
-    val n_results: Int = 5,
-    val include: List<String> = listOf("documents", "distances", "metadatas")
-)
-
-@Serializable
-data class ChromaQueryResponse(
-    val ids: List<List<String>>,
-    val documents: List<List<String>>,
-    val distances: List<List<Float>>? = null
-)
+private val json = Json { ignoreUnknownKeys = true }
 
 class ChromaClient {
     private val client = HttpClient(CIO) {
@@ -72,27 +32,24 @@ class ChromaClient {
         }
     }
 
-    private val BASE_URL = "http://localhost:8001/api/v2/tenants/default_tenant/databases/default_database"
+    private val BASE_URL = "http://localhost:8000/api/v2/tenants/default_tenant/databases/default_database"
 
     suspend fun getOrCreateCollection(name: String): String? {
         return try {
             val response = client.post("$BASE_URL/collections") {
                 contentType(ContentType.Application.Json)
-                setBody(mapOf("name" to name, "get_or_create" to true))
+                setBody(ChromaCreateCollectionRequest(name, get_or_create = true))
             }
             if (response.status.isSuccess()) {
                 val bodyText = response.bodyAsText()
-                println("[DEBUG] Resposta Chroma (Collections): $bodyText")
-                val collection = Json { ignoreUnknownKeys = true }.decodeFromString<ChromaCollection>(bodyText)
+                val collection = json.decodeFromString<ChromaCollection>(bodyText)
                 collection.id
             } else {
-                val errorBody = response.bodyAsText()
-                println("Erro ao obter/criar coleção Chroma: ${response.status} - $errorBody")
-                null
+                val response = client.get("$BASE_URL/collections/$name")
+                throw Exception("Erro ao obter/criar coleção Chroma: ${response.status} - ${response.bodyAsText()}")
             }
         } catch (e: Exception) {
-            println("Erro na requisição Chroma: ${e.message}")
-            null
+            throw Exception(e.message)
         }
     }
 
@@ -106,18 +63,20 @@ class ChromaClient {
         try {
             val response = client.post("$BASE_URL/collections/$collectionId/upsert") {
                 contentType(ContentType.Application.Json)
-                setBody(ChromaAddRequest(
-                    ids = listOf(id),
-                    embeddings = listOf(embedding),
-                    documents = listOf(document),
-                    metadatas = if (metadata != null) listOf(metadata) else null
-                ))
+                setBody(
+                    ChromaAddRequest(
+                        ids = listOf(id),
+                        embeddings = listOf(embedding),
+                        documents = listOf(document),
+                        metadatas = if (metadata != null) listOf(metadata) else null
+                    )
+                )
             }
             if (!response.status.isSuccess()) {
                 println("Erro ao adicionar documento no Chroma (HTTP ${response.status}): ${response.bodyAsText()}")
             }
         } catch (e: Exception) {
-            println("Erro ao adicionar documento no Chroma: ${e.message}")
+            throw Exception("Erro ao adicionar documento no Chroma: ${e.message}")
         }
     }
 
@@ -137,8 +96,7 @@ class ChromaClient {
                 null
             }
         } catch (e: Exception) {
-            println("Erro ao obter documentos do Chroma: ${e.message}")
-            null
+            throw Exception("Erro ao obter documentos do Chroma: ${e.message}")
         }
     }
 
@@ -149,7 +107,7 @@ class ChromaClient {
                 setBody(ChromaDeleteRequest(ids = ids, where = where))
             }
         } catch (e: Exception) {
-            println("Erro ao deletar documentos do Chroma: ${e.message}")
+            throw Exception("Erro ao deletar documentos do Chroma: ${e.message}")
         }
     }
 
@@ -157,10 +115,12 @@ class ChromaClient {
         return try {
             val response = client.post("$BASE_URL/collections/$collectionId/query") {
                 contentType(ContentType.Application.Json)
-                setBody(ChromaQueryRequest(
-                    query_embeddings = listOf(queryEmbedding),
-                    n_results = nResults
-                ))
+                setBody(
+                    ChromaQueryRequest(
+                        queryEmbeddings = listOf(queryEmbedding),
+                        nResults = nResults
+                    )
+                )
             }
             if (response.status.isSuccess()) {
                 val result = response.body<ChromaQueryResponse>()
@@ -169,8 +129,7 @@ class ChromaClient {
                 emptyList()
             }
         } catch (e: Exception) {
-            println("Erro ao consultar Chroma: ${e.message}")
-            emptyList()
+            throw Exception("Erro ao consultar o Chroma: ${e.message}")
         }
     }
 }

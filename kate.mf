@@ -1,4 +1,4 @@
-FROM gemma3:12b-it-q4_K_M
+FROM gemma4:e2b
 PARAMETER num_ctx 2048
 PARAMETER temperature 0.65
 PARAMETER top_p 0.9

@@ -12,9 +12,9 @@ import kotlinx.serialization.json.Json
 
 class OllamaClient {
     private val defaultJson = Json {
-                ignoreUnknownKeys = true
-                prettyPrint = true
-            }
+        ignoreUnknownKeys = true
+        prettyPrint = true
+    }
     private val client = HttpClient(CIO) {
         install(ContentNegotiation) {
             json(defaultJson)
@@ -22,9 +22,9 @@ class OllamaClient {
     }
 
     private val OLLAMA_URL = "http://127.0.0.1:11434/api/generate"
-    private val EMBED_URL = "http://127.0.0.1:11434/api/embed"
+    private val EMBED_URL = "http://localhost:11434/api/embed"
 
-    suspend fun getEmbeddings(text: String, model: String = "kate"): List<Float>? {
+    suspend fun getEmbeddings(text: String, model: String = "embeddinggemma"): List<Float>? {
         return try {
             val response = client.post(EMBED_URL) {
                 contentType(ContentType.Application.Json)
@@ -34,12 +34,10 @@ class OllamaClient {
                 val result = response.body<OllamaEmbedResponse>()
                 result.embeddings.firstOrNull()
             } else {
-                println("Erro ao gerar embeddings: ${response.bodyAsText()}")
                 null
             }
         } catch (e: Exception) {
-            println("Erro na requisição de embeddings: ${e.message}")
-            null
+            throw Exception("Erro na requisição de embeddings: ${e.message}")
         }
     }
 
@@ -56,7 +54,7 @@ class OllamaClient {
                 setBody(OllamaRequest(prompt = finalPrompt, stream = false, model = "kate"))
             }
             println("HTTP Status: ${response.status}")
-            
+
             if (response.status.isSuccess()) {
                 val result = response.body<OllamaResponse>()
                 println("Response: $result")
