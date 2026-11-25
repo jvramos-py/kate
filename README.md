@@ -13,6 +13,11 @@ Bot de Discord com personalidade própria que conversa por texto e por voz, usa 
 
 ## Requisitos
 
+**Com Docker (recomendado):** apenas Docker + Docker Compose. A imagem já inclui JDK 21,
+Ollama, Piper, FFmpeg e `whisper-cli`.
+
+**Sem Docker:**
+
 - JDK 21.
 - PostgreSQL com a extensão `pgvector`.
 - [Ollama](https://ollama.com/) com os modelos configurados.
@@ -46,7 +51,7 @@ Bot de Discord com personalidade própria que conversa por texto e por voz, usa 
 4. Suba o PostgreSQL com pgvector:
 
    ```bash
-   docker compose -f lavalink/compose-amd/docker-compose.yml up -d postgres
+   docker compose up -d postgres
    ```
 
    As credenciais padrão são `kate` / `kate` / banco `kate`. Para usar outros valores,
@@ -66,8 +71,67 @@ Bot de Discord com personalidade própria que conversa por texto e por voz, usa 
    ./gradlew run
    ```
 
+## Docker
+
+O `Dockerfile` empacota o bot com Piper, FFmpeg e `whisper-cli`. Os modelos grandes
+(`models/` e `src/main/resources/voices/`) são montados do host.
+
+1. Copie o `.env` e preencha o token:
+
+   ```bash
+   cp .env.example .env
+   # edite BOT_TOKEN
+   ```
+
+### Opção A — stack completa (tudo em container)
+
+Sobe Postgres, Ollama, SearXNG e o bot:
+
+```bash
+docker compose up -d --build
+docker compose logs -f kate
+```
+
+O serviço `ollama-models` baixa `gemma4:e4b`, cria o modelo `kate` a partir do
+`kate.mf` e baixa o modelo de embeddings. A primeira execução pode demorar
+bastante por causa do download dos modelos (~10 GB).
+
+GPU (apenas na opção A):
+
+```bash
+# AMD (ROCm) — requer amdgpu carregado e /dev/kfd + /dev/dri
+docker compose -f docker-compose.yml -f docker-compose.gpu-amd.yml up -d
+
+# NVIDIA — requer driver NVIDIA + NVIDIA Container Toolkit
+docker compose -f docker-compose.yml -f docker-compose.gpu-nvidia.yml up -d
+```
+
+Para placas AMD fora da lista oficial do ROCm, defina `HSA_OVERRIDE_GFX_VERSION`
+(ex.: `10.3.0`).
+
+> Se você já tinha o compose antigo em `lavalink/`, remova os containers antes
+> (`docker rm -f postgres kate-lavalink`) e, para reaproveitar os dados do RAG,
+> defina `POSTGRES_VOLUME=compose-amd_postgres_data` no `.env`.
+
+### Opção B — reaproveitar serviços do host
+
+Se o Ollama, o Postgres e o SearXNG já rodam na máquina (fora do Docker), suba só o
+bot e o bootstrap de modelos:
+
+```bash
+docker compose -f docker-compose.yml -f docker-compose.host.yml up -d --build
+```
+
+O `docker-compose.host.yml` aponta `OLLAMA_URL`, `KATE_DB_URL` e `SEARXNG_URL` para
+`host.docker.internal` e desativa as cópias em container. Requer que os serviços
+escutem em `0.0.0.0` (não apenas `127.0.0.1`).
+
+O SearXNG é opcional nos dois modos: sem ele o bot continua funcionando, apenas sem
+busca na web.
+
 ## Ingestão da base de conhecimento
 
+A ingestão roda do host (a porta `5432` do Postgres é publicada justamente para isso).
 O comando abaixo baixa páginas da Fandom, gera chunks e embeddings e grava tudo no PostgreSQL:
 
 ```bash
@@ -95,8 +159,11 @@ O projeto usa `ktlint` no build para manter o estilo do código.
 src/main/kotlin/          Código principal do bot, RAG, voz e clientes HTTP
 src/main/java/            Patch local do PacketTransformer do Discord4J
 src/main/resources/       Logback e modelos de voz (não versionados)
-lavalink/                 Configurações opcionais de infraestrutura e pasta de áudio
+lavalink/sounds/          Pasta de áudio (TTS gerado e som de introdução)
 models/                   Modelos do whisper.cpp (não versionados)
+searxng/                  settings.yml usado pelo container do SearXNG
+Dockerfile                Imagem do bot (JRE 21 + Piper + FFmpeg + whisper-cli)
+docker-compose*.yml       Stack completa (Postgres, Ollama, SearXNG, bot)
 ```
 
 ## Observações
