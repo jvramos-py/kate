@@ -91,6 +91,31 @@ object GameDetector {
             "\\b(elden ring|elden|tarnished|lands between|maliketh|malenia|radahn|godrick|rennala|morgott|fire giant|placidusax|ranni|blaidd|twin maidens)\\b",
             RegexOption.IGNORE_CASE,
         )
+    private val sekiro =
+        Regex(
+            "\\b(sekiro|shadows die twice|ashina|isshin|genichiro|divine heir|prosthetic tools?|mikiri counter)\\b",
+            RegexOption.IGNORE_CASE,
+        )
+    private val bloodborne =
+        Regex(
+            "\\b(bloodborne|yharnam|blood echoes?|blood ?vials?|chalice dungeons?|caryll runes?|great ones?|gehrman|vicar amelia|micolash|orphan of kos|lady maria|hunter'?s dream)\\b",
+            RegexOption.IGNORE_CASE,
+        )
+    private val wuchang =
+        Regex(
+            "\\b(wuchang|fallen feathers?)\\b",
+            RegexOption.IGNORE_CASE,
+        )
+    private val yakuza0 =
+        Regex(
+            "\\b(yakuza(\\s*(0|zero))?|kamurocho|kazuma kiryu|goro majima|kiryu|majima|tojo clan|dojima|nishikiyama|shibusawa|kuze|sagawa)\\b",
+            RegexOption.IGNORE_CASE,
+        )
+    private val baldursGate3 =
+        Regex(
+            "\\b(baldur'?s? gate\\s*(3|iii)|bg3|astarion|shadowheart|karlach|lae'?zel|minthara|the absolute|mind flayers?|illithids?|githyanki)\\b",
+            RegexOption.IGNORE_CASE,
+        )
     private val helldivers =
         Regex(
             "\\b(helldivers?\\s*2|helldivers?|hd2|super earth|terminid[sz]?|automatons?|illuminate[sd]?|stratagems?|stratagema[s]?|warbonds?|major order|democracy officer|pelican-1|super destroyer)\\b",
@@ -103,6 +128,11 @@ object GameDetector {
             darkSouls2.containsMatchIn(text) -> "darksouls2"
             darkSouls1.containsMatchIn(text) -> "darksouls1"
             eldenRing.containsMatchIn(text) -> "eldenring"
+            sekiro.containsMatchIn(text) -> "sekiro"
+            bloodborne.containsMatchIn(text) -> "bloodborne"
+            wuchang.containsMatchIn(text) -> "wuchang"
+            yakuza0.containsMatchIn(text) -> "yakuza0"
+            baldursGate3.containsMatchIn(text) -> "baldursgate3"
             helldivers.containsMatchIn(text) -> "helldivers2"
             else -> null
         }
@@ -114,6 +144,11 @@ object GameDetector {
             "darksouls2" -> "Dark Souls II"
             "darksouls3" -> "Dark Souls III"
             "eldenring" -> "Elden Ring"
+            "sekiro" -> "Sekiro: Shadows Die Twice"
+            "bloodborne" -> "Bloodborne"
+            "wuchang" -> "Wuchang: Fallen Feathers"
+            "yakuza0" -> "Yakuza 0"
+            "baldursgate3" -> "Baldur's Gate 3"
             else -> "Base de conhecimento"
         }
 }

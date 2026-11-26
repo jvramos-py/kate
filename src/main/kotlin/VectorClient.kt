@@ -9,6 +9,7 @@ import org.jetbrains.exposed.sql.IColumnType
 import org.jetbrains.exposed.sql.IntegerColumnType
 import org.jetbrains.exposed.sql.SchemaUtils
 import org.jetbrains.exposed.sql.SqlExpressionBuilder.eq
+import org.jetbrains.exposed.sql.SqlExpressionBuilder.like
 import org.jetbrains.exposed.sql.Table
 import org.jetbrains.exposed.sql.TextColumnType
 import org.jetbrains.exposed.sql.and
@@ -19,6 +20,12 @@ import org.jetbrains.exposed.sql.transactions.transaction
 import org.jetbrains.exposed.sql.upsert
 import org.postgresql.util.PGobject
 import java.sql.ResultSet
+
+data class IngestState(
+    val signature: String,
+    val lastIndex: Int,
+    val total: Int,
+)
 
 class VectorClient(
     url: String = Config.databaseUrl,
@@ -73,6 +80,16 @@ class VectorClient(
         override val primaryKey = PrimaryKey(id)
     }
 
+    object IngestStates : Table("rag_ingest_state") {
+        val game = text("game")
+        val signature = text("signature")
+        val lastIndex = integer("last_index")
+        val total = integer("total")
+        val updatedAt = long("updated_at")
+
+        override val primaryKey = PrimaryKey(game)
+    }
+
     class VectorColumnType(
         private val dimensions: Int? = null,
     ) : ColumnType<PGvector>() {
@@ -104,7 +121,7 @@ class VectorClient(
     init {
         transaction(db) {
             exec("CREATE EXTENSION IF NOT EXISTS vector")
-            SchemaUtils.create(Embeddings, RagPages, KnowledgeChunks)
+            SchemaUtils.create(Embeddings, RagPages, KnowledgeChunks, IngestStates)
             exec("ALTER TABLE embeddings ADD COLUMN IF NOT EXISTS timestamp BIGINT")
             exec("CREATE INDEX IF NOT EXISTS knowledge_chunks_embedding_hnsw ON knowledge_chunks USING hnsw (embedding vector_cosine_ops)")
             exec("CREATE INDEX IF NOT EXISTS knowledge_chunks_game_idx ON knowledge_chunks (game)")
@@ -156,6 +173,44 @@ class VectorClient(
                 ?.get(RagPages.sourceHash)
         }
 
+    fun ingestState(game: String): IngestState? =
+        transaction(db) {
+            IngestStates
+                .select(IngestStates.signature, IngestStates.lastIndex, IngestStates.total)
+                .where { IngestStates.game eq game }
+                .singleOrNull()
+                ?.let {
+                    IngestState(
+                        signature = it[IngestStates.signature],
+                        lastIndex = it[IngestStates.lastIndex],
+                        total = it[IngestStates.total],
+                    )
+                }
+        }
+
+    fun saveIngestState(
+        game: String,
+        signature: String,
+        lastIndex: Int,
+        total: Int,
+    ) {
+        transaction(db) {
+            IngestStates.upsert {
+                it[IngestStates.game] = game
+                it[IngestStates.signature] = signature
+                it[IngestStates.lastIndex] = lastIndex
+                it[IngestStates.total] = total
+                it[IngestStates.updatedAt] = System.currentTimeMillis()
+            }
+        }
+    }
+
+    fun clearIngestState(game: String) {
+        transaction(db) {
+            IngestStates.deleteWhere { IngestStates.game eq game }
+        }
+    }
+
     fun upsertPageAndChunks(
         page: RagPage,
         chunks: List<RagChunk>,
@@ -198,6 +253,18 @@ class VectorClient(
         }
     }
 
+    fun deleteHelldivers1Content(): Int =
+        transaction(db) {
+            val chunks =
+                KnowledgeChunks.deleteWhere {
+                    (KnowledgeChunks.game eq "helldivers2") and (KnowledgeChunks.title like "Helldivers 1:%")
+                }
+            RagPages.deleteWhere {
+                (RagPages.game eq "helldivers2") and (RagPages.title like "Helldivers 1:%")
+            }
+            chunks
+        }
+
     fun searchKnowledge(
         embedding: List<Float>,
         game: String?,
@@ -207,12 +274,13 @@ class VectorClient(
         transaction(db) {
             val vector = PGvector(embedding.toFloatArray())
             val gameFilter = if (game != null) "AND game = ?" else ""
+            val legacyFilter = legacyTitleFilter()
             val sql =
                 """
                 SELECT id, page_id, game, title, section, url, content, spoiler, metadata,
                        1 - (embedding <=> ?::vector) AS score
                 FROM knowledge_chunks
-                WHERE 1 = 1 $gameFilter
+                WHERE 1 = 1 $gameFilter $legacyFilter
                 ORDER BY embedding <=> ?::vector
                 LIMIT ?
                 """.trimIndent()
@@ -243,6 +311,7 @@ class VectorClient(
             if (term.isBlank()) return@transaction emptyList()
 
             val gameFilter = if (game != null) "AND game = ?" else ""
+            val legacyFilter = legacyTitleFilter()
             val sql =
                 """
                 SELECT id, page_id, game, title, section, url, content, spoiler, metadata,
@@ -254,6 +323,7 @@ class VectorClient(
                 WHERE to_tsvector('simple', title || ' ' || section || ' ' || content)
                       @@ websearch_to_tsquery('simple', ?)
                 $gameFilter
+                $legacyFilter
                 ORDER BY score DESC
                 LIMIT ?
                 """.trimIndent()
@@ -275,6 +345,8 @@ class VectorClient(
         transaction(db) {
             KnowledgeChunks.selectAll().count()
         }
+
+    private fun legacyTitleFilter(): String = "AND title NOT LIKE 'Helldivers 1:%'"
 
     private fun readHit(
         rs: ResultSet,

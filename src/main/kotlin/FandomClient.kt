@@ -25,6 +25,7 @@ data class FandomPageRef(
     val pageId: Long,
     val title: String,
     val isCategory: Boolean,
+    val namespace: Int = 0,
 )
 
 class FandomClient {
@@ -53,7 +54,7 @@ class FandomClient {
                 val ns = obj["ns"]?.jsonPrimitive?.intOrNull ?: return@mapNotNull null
                 val title = obj["title"]?.jsonPrimitive?.content ?: return@mapNotNull null
                 val pageId = obj["pageid"]?.jsonPrimitive?.longOrNull ?: return@mapNotNull null
-                FandomPageRef(pageId, title, ns == 14)
+                FandomPageRef(pageId, title, ns == 14, ns)
             } ?: emptyList()
         val next =
             payload["continue"]

@@ -23,7 +23,7 @@ object Config {
         get() = env("OLLAMA_SUMMARY_MODEL", "gemma4:e4b")
 
     val ollamaEmbeddingModel: String
-        get() = env("OLLAMA_EMBEDDING_MODEL", "embeddinggemma")
+        get() = env("OLLAMA_EMBEDDING_MODEL", "embeddinggemma:latest")
 
     val searxngUrl: String
         get() = env("SEARXNG_URL", "http://localhost:8080")
