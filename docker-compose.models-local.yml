@@ -1,0 +1,44 @@
+# Importa os modelos de um store local do Ollama (ex.: ~/.ollama/models) para o
+# volume da stack, evitando o download de ~10 GB.
+#
+# Uso:
+#   docker compose -f docker-compose.yml -f docker-compose.gpu-amd.yml \
+#                  -f docker-compose.models-local.yml up -d
+#
+# A origem pode ser trocada com OLLAMA_MODELS_DIR no .env (aponte para o
+# diretório que contém `manifests/` e `blobs/`, normalmente <store>/models).
+#
+# A cópia é idempotente: se o volume já tiver modelos, nada é feito.
+# O store de origem é montado somente para leitura.
+
+services:
+  ollama-import:
+    image: alpine:3.20
+    container_name: kate-ollama-import
+    restart: "no"
+    volumes:
+      - ${OLLAMA_MODELS_DIR:-${HOME}/.ollama/models}:/src:ro
+      - ollama_data:/dst
+    networks:
+      - kate
+    entrypoint: ["/bin/sh", "-ec"]
+    command:
+      - |
+        if [ ! -d /src/manifests ]; then
+          echo "ERRO: store de origem não encontrado em /src."
+          echo "Defina OLLAMA_MODELS_DIR no .env apontando para <store>/models."
+          exit 1
+        fi
+        if [ -d /dst/manifests/registry.ollama.ai/library ] && \
+           [ -n "$$(ls -A /dst/manifests/registry.ollama.ai/library 2>/dev/null)" ]; then
+          echo "Modelos já presentes no volume — importação ignorada."
+          exit 0
+        fi
+        echo "Importando modelos de /src ..."
+        cp -a /src/. /dst/
+        echo "Concluído: $$(du -sh /dst | cut -f1)"
+
+  ollama-models:
+    depends_on:
+      ollama-import:
+        condition: service_completed_successfully

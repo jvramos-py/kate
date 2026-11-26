@@ -1,0 +1,15 @@
+.git
+.github
+.gradle
+build
+out
+.kotlin
+.idea
+.junie
+.env
+.env.*
+!.env.example
+models
+src/main/resources/voices
+lavalink/sounds/*.wav
+*.md

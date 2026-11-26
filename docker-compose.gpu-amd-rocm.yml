@@ -1,0 +1,16 @@
+# Override para GPU AMD via ROCm (opcional).
+# Uso: docker compose -f docker-compose.yml -f docker-compose.gpu-amd-rocm.yml up -d
+#
+# Requer /dev/kfd e /dev/dri.
+# Rode ./scripts/amd-gpu.sh --write para definir HSA_OVERRIDE_GFX_VERSION de
+# acordo com a sua GPU (só é necessário em placas fora da lista oficial do ROCm).
+# A variável é repassada apenas se estiver no .env — sem valor vazio.
+
+services:
+  ollama:
+    image: ${OLLAMA_IMAGE:-ollama/ollama:rocm}
+    devices:
+      - /dev/kfd
+      - /dev/dri
+    environment:
+      - HSA_OVERRIDE_GFX_VERSION

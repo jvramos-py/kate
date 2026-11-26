@@ -1,0 +1,36 @@
+# Reaproveita serviços que já rodam no host (Ollama, PostgreSQL e SearXNG),
+# em vez de subir as cópias em container.
+#
+# Uso: docker compose -f docker-compose.yml -f docker-compose.host.yml up -d
+#
+# Requisitos no host:
+#   - Ollama em 0.0.0.0:11434 (com os modelos kate, gemma4:e4b e embeddinggemma)
+#   - PostgreSQL/pgvector em 0.0.0.0:5432 (banco kate)
+#   - SearXNG em 0.0.0.0:8080 (opcional, mas o compose espera a URL)
+
+services:
+  kate:
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    environment:
+      KATE_DB_URL: jdbc:postgresql://host.docker.internal:5432/kate
+      OLLAMA_URL: http://host.docker.internal:11434
+      SEARXNG_URL: http://host.docker.internal:8080
+    depends_on: !override
+      ollama-models:
+        condition: service_completed_successfully
+
+  ollama-models:
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    environment:
+      OLLAMA_HOST: http://host.docker.internal:11434
+    depends_on: !override {}
+
+  # Desativa as cópias em container.
+  ollama:
+    profiles: ["bundled"]
+  postgres:
+    profiles: ["bundled"]
+  searxng:
+    profiles: ["bundled"]

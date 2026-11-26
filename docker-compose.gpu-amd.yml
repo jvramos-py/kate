@@ -1,0 +1,15 @@
+# Override para GPU AMD via Vulkan (recomendado).
+# Uso: docker compose -f docker-compose.yml -f docker-compose.gpu-amd.yml up -d
+#
+# Funciona em RDNA1/2/3/4 e Vega/Polaris sem HSA_OVERRIDE_GFX_VERSION.
+# Requisitos: driver amdgpu carregado e /dev/dri disponível.
+# Para usar ROCm, veja docker-compose.gpu-amd-rocm.yml.
+
+services:
+  ollama:
+    devices:
+      - /dev/dri
+    environment:
+      OLLAMA_VULKAN: "1"
+      # Descomente para somar a iGPU (APUs) à GPU discreta:
+      # OLLAMA_IGPU_ENABLE: "1"

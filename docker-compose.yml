@@ -1,0 +1,117 @@
+name: kate
+
+services:
+  kate:
+    build:
+      context: .
+    image: kate:local
+    container_name: kate
+    restart: unless-stopped
+    environment:
+      BOT_TOKEN: ${BOT_TOKEN:?defina BOT_TOKEN no arquivo .env}
+      KATE_DB_URL: jdbc:postgresql://postgres:5432/kate
+      KATE_DB_USER: ${POSTGRES_USER:-kate}
+      KATE_DB_PASSWORD: ${POSTGRES_PASSWORD:-kate}
+      OLLAMA_URL: http://ollama:11434
+      OLLAMA_MODEL: ${OLLAMA_MODEL:-kate}
+      OLLAMA_SUMMARY_MODEL: ${OLLAMA_SUMMARY_MODEL:-gemma4:e4b}
+      OLLAMA_EMBEDDING_MODEL: ${OLLAMA_EMBEDDING_MODEL:-embeddinggemma}
+      SEARXNG_URL: http://searxng:8080
+    volumes:
+      - ./models:/app/models:ro
+      - ./src/main/resources/voices:/app/voices:ro
+      # Opcional: mantém os WAVs gerados no host (o container roda com UID 1000)
+      # - ./lavalink/sounds:/app/sounds
+    depends_on:
+      postgres:
+        condition: service_healthy
+      ollama:
+        condition: service_healthy
+      ollama-models:
+        condition: service_completed_successfully
+    networks:
+      - kate
+
+  postgres:
+    image: pgvector/pgvector:pg16
+    container_name: kate-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-kate}
+      POSTGRES_USER: ${POSTGRES_USER:-kate}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-kate}
+    ports:
+      # publicado para rodar ./gradlew ingestRag a partir do host
+      - "${POSTGRES_PORT:-5432}:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+      start_period: 10s
+    networks:
+      - kate
+
+  ollama:
+    image: ${OLLAMA_IMAGE:-ollama/ollama:latest}
+    container_name: kate-ollama
+    restart: unless-stopped
+    volumes:
+      - ollama_data:/root/.ollama
+    healthcheck:
+      test: ["CMD", "ollama", "list"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 20s
+    networks:
+      - kate
+
+  ollama-models:
+    image: ollama/ollama:latest
+    container_name: kate-ollama-models
+    restart: "no"
+    depends_on:
+      ollama:
+        condition: service_healthy
+    environment:
+      OLLAMA_HOST: http://ollama:11434
+      OLLAMA_MODEL: ${OLLAMA_MODEL:-kate}
+      OLLAMA_BASE_MODEL: ${OLLAMA_BASE_MODEL:-gemma4:e4b}
+      OLLAMA_SUMMARY_MODEL: ${OLLAMA_SUMMARY_MODEL:-gemma4:e4b}
+      OLLAMA_EMBEDDING_MODEL: ${OLLAMA_EMBEDDING_MODEL:-embeddinggemma}
+    volumes:
+      - ./kate.mf:/models/kate.mf:ro
+    entrypoint: ["/bin/sh", "-ec"]
+    command:
+      - |
+        ollama pull "$${OLLAMA_BASE_MODEL}"
+        if [ "$${OLLAMA_SUMMARY_MODEL}" != "$${OLLAMA_BASE_MODEL}" ]; then
+          ollama pull "$${OLLAMA_SUMMARY_MODEL}"
+        fi
+        ollama create "$${OLLAMA_MODEL}" -f /models/kate.mf
+        ollama pull "$${OLLAMA_EMBEDDING_MODEL}"
+    networks:
+      - kate
+
+  searxng:
+    image: searxng/searxng:latest
+    container_name: kate-searxng
+    restart: unless-stopped
+    volumes:
+      - ./searxng:/etc/searxng:ro
+    networks:
+      - kate
+
+networks:
+  kate:
+    name: kate-network
+    driver: bridge
+
+volumes:
+  postgres_data:
+    # Permite reaproveitar um volume existente, ex.: POSTGRES_VOLUME=compose-amd_postgres_data
+    name: ${POSTGRES_VOLUME:-kate_postgres_data}
+  ollama_data:
